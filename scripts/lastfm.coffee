@@ -9,13 +9,13 @@
 #   HUBOT_LASTFM_SECRET
 #
 # Commands:
-#   hubot now playing <username> - Fetches current playing or most recently played track by username specified.
+#   now playing <username> - Fetches current playing or most recently played track by username specified. If <username> is omitted, requester's username is used instead.
 #
 
 LastFmNode = require('lastfm').LastFmNode
 
 module.exports = (robot) ->
-  robot.respond /now\s*playing\s*(\S+)/i, (msg) ->
+  robot.hear /^now\s*playing\s*(\S*)/i, (msg) ->
     lastfm = new LastFmNode (
       {
         api_key: process.env.HUBOT_LASTFM_APIKEY,
@@ -26,20 +26,26 @@ module.exports = (robot) ->
     lastfm.request(
       'user.getRecentTracks',
       {
-        user: msg.match[1],
+        user: if msg.match[1] then msg.match[1] else msg.message.user.name,
         limit: 2,
         extended: 1,
         handlers: {
           success: (data) ->
-            msg.reply latest(data.recenttracks)
+            tracks = data.recenttracks
+            track = tracks.track[0]
+            reply = latest(tracks['@attr'].user, track)
+            robot.http(track.url)
+              .get() (err, res, body) ->
+                if !err && res.statusCode == 200
+                  reply += ' - ' + bestLink(track.url, body)
+                msg.reply reply
           error: (error) ->
         }
       }
     )
 
-latest = (tracks) ->
-  reply = tracks['@attr'].user
-  track = tracks.track[0]
+latest = (user, track) ->
+  reply = user
 
   nowPlaying = track['@attr'] != undefined && track['@attr'].nowplaying == 'true'
   if nowPlaying
@@ -51,6 +57,15 @@ latest = (tracks) ->
   if !nowPlaying && track.date != undefined
     reply += ' on ' + track.date['#text'] + ' (UTC)'
 
-  reply += ' - ' + track.url
-
   return reply
+
+bestLink = (baseURL, rawHTML) ->
+  spotify = rawHTML.match /data-uri="spotify:track:(.*?)"/i
+  if spotify
+    return 'http://play.spotify.com/track/' + spotify[1]
+
+  youtube = rawHTML.match /data-youtube-player-id="(.*?)"/i
+  if youtube
+    return 'http://www.youtube.com/watch?v=' + youtube[1]
+
+  return baseURL
