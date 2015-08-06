@@ -2,6 +2,5 @@
 "dice.coffee",
 "catfacts.coffee",
 "google.coffee",
-"urban.coffee",
-"wolfram.coffee"
+"urban.coffee"
 ]
